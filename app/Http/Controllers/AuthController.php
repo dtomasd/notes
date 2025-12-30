@@ -15,12 +15,16 @@ class AuthController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:' . User::class],
             'password' => ['required', 'string', Password::defaults(), 'confirmed'],
+            'public_key' => ['required', 'string'],
+            'private_key' => ['required', 'string'],
         ]);
 
         $user = User::create([
             'name' => $validated['name'],
             'email' => $validated['email'],
             'password' => $validated['password'],
+            'public_key' => $validated['public_key'],
+            'private_key' => $validated['private_key'],
         ]);
 
         Auth::login($user);

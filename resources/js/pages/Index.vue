@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3';
 import { ref } from 'vue';
+import { encryptPrivateKeyForStorage, generateUserKeyPair, unlockPrivateKey } from '../services/cryptoService';
+import { useKeyStore } from '../stores/keyStore';
 
 const view = ref<'login' | 'register'>('login');
 
@@ -15,15 +17,48 @@ const registerForm = useForm({
     email: '',
     password: '',
     password_confirmation: '',
+    public_key: '',
+    private_key: '',
 });
 
 const handleLogin = () => {
     loginForm.post('/login', {
+        onSuccess: async (page) => {
+            const encrypted = page.props?.auth?.encrypted_private_key;
+            const userPublicKey = page.props?.auth?.user?.public_key;
+            if (!encrypted || typeof encrypted !== 'string') {
+                return;
+            }
+
+            try {
+                const privateKey = await unlockPrivateKey(encrypted, loginForm.password);
+                const { setPrivateKey, setPublicKey } = useKeyStore();
+                setPrivateKey(privateKey);
+                if (userPublicKey) {
+                    setPublicKey(userPublicKey);
+                }
+            } catch (error) {
+                console.error('Unable to decrypt private key', error);
+            }
+        },
         onFinish: () => loginForm.reset('password'),
     });
 };
 
-const handleRegister = () => {
+const handleRegister = async () => {
+    try {
+        const { publicKey, privateKey } = await generateUserKeyPair();
+        const { setPrivateKey, setPublicKey } = useKeyStore();
+        setPrivateKey(privateKey);
+        setPublicKey(publicKey);
+        const encryptedPrivateKey = await encryptPrivateKeyForStorage(privateKey, registerForm.password);
+        registerForm.public_key = publicKey;
+        registerForm.private_key = JSON.stringify(encryptedPrivateKey);
+    } catch (error) {
+        console.error('Unable to generate key pair', error);
+        return;
+    }
+
     registerForm.post('/register', {
         onFinish: () => registerForm.reset('password', 'password_confirmation'),
     });
@@ -38,22 +73,11 @@ const handleRegister = () => {
             <section class="lg:w-1/2">
                 <p class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-300">PassNote</p>
                 <h1 class="mt-4 text-4xl font-bold leading-tight text-white sm:text-5xl">
-                    Keep your passwords safe and reachable.
+                    Keep your notes safe and reachable.
                 </h1>
                 <p class="mt-4 max-w-xl text-base text-slate-200 sm:text-lg">
-                    Sign in to access your vault. Create a free account if you are new here.
+                    Sign in to access your notes vault. Create a free account if you are new here.
                 </p>
-
-                <div class="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div class="rounded-2xl border border-slate-700/80 bg-white/5 p-4 shadow-lg shadow-black/20 backdrop-blur">
-                        <h3 class="text-lg font-semibold text-white">Private vaults</h3>
-                        <p class="mt-1 text-sm text-slate-200">Every login is encrypted and stays on your account.</p>
-                    </div>
-                    <div class="rounded-2xl border border-slate-700/80 bg-white/5 p-4 shadow-lg shadow-black/20 backdrop-blur">
-                        <h3 class="text-lg font-semibold text-white">Fast access</h3>
-                        <p class="mt-1 text-sm text-slate-200">Jump back in on any device with a quick sign in.</p>
-                    </div>
-                </div>
             </section>
 
             <section class="mt-10 w-full rounded-2xl border border-slate-700/80 bg-white/5 p-6 shadow-xl shadow-black/20 backdrop-blur lg:mt-0 lg:w-1/2">
